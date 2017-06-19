@@ -2,198 +2,149 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import './App.css';
 import geoNames from './kladr.json';
+import PropTypes from 'prop-types';
 
-const { addons, Children, cloneElement, Component } = React;
-const { findDOMNode, PropTypes } = ReactDOM;
+console.clear();
 
-const classSet = addons;
+class Api {
+  static getResults(keyword) {
+    return fetch('./kladr.json').then(res => {
+      return res.json();
+    });
+  }
+}
 
-const keys = {
-  down: 'ArrowDown',
-  enter: 'Enter',
-  up: 'ArrowUp'
+class App extends React.Component {
+  constructor() {
+    super();
+    this.state = {
+      results: [],
+      autoCompleteIndex: -1,
+      selectedIndex: -1
+    };
+  }
+
+  render() {
+    let selectedValue = this.state.results[this.state.selectedIndex];
+
+    return (
+      <div className="app">
+        <SearchInput
+          onChange={this._onChange.bind(this)}
+          onKeyDown={this._onKeyDown.bind(this)}
+          value={selectedValue}
+        />
+        <AutoCompleteDropdown
+          results={this.state.results}
+          highlightedIndex={this.state.autoCompleteIndex}
+        />
+      </div>
+    );
+  }
+
+  _onChange(e) {
+    this.setState({
+      autoCompleteIndex: -1,
+      selectedIndex: -1
+    });
+
+    let searchValue = e.currentTarget.value;
+    Api.getResults(searchValue).then(results => {
+      this.setState({
+        results: results.data
+      });
+    });
+  }
+
+  _onKeyDown(e) {
+    var newIndex = this.state.autoCompleteIndex;
+    var newSelectedIndex = this.state.selectedIndex;
+
+    if (e.keyCode === 13 || (e.keyCode === 9 && newIndex > -1)) {
+      newSelectedIndex = newIndex;
+    } else if (e.keyCode === 40) {
+      newIndex = this.state.autoCompleteIndex + 1;
+    } else if (e.keyCode === 38) {
+      newIndex = this.state.autoCompleteIndex - 1;
+    }
+
+    if (newIndex !== this.state.autoCompleteIndex) {
+      //e.preventDefault();
+
+      if (newIndex === -1) {
+        newIndex = this.state.results.length - 1;
+      } else if (newIndex === this.state.results.length) {
+        newIndex = 0;
+      }
+    }
+
+    this.setState({
+      autoCompleteIndex: newIndex,
+      selectedIndex: newSelectedIndex
+    });
+  }
+}
+
+class AutoCompleteDropdown extends React.Component {
+  render() {
+    return (
+      <ul className="results">
+        {this.props.results.map((result, index) => {
+          let className = index === this.props.highlightedIndex ? 'result selected' : 'result';
+
+          return (
+            <li className={className}>
+              {result}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+}
+AutoCompleteDropdown.propTypes = {
+  results: React.PropTypes.array,
+  highlightedIndex: React.PropTypes.number
 };
 
-class AutoComplete extends Component {
-  constructor(props) {
-    super(props);
+class SearchInput extends React.Component {
+  constructor() {
+    super();
 
     this.state = {
-      inputWidth: null,
-      selectedSuggestion: 0,
-      showSuggestions: false,
-      shownOptions: [],
-      nativeSupport: this._supportsNative(),
-      options: props.options,
       value: ''
     };
   }
 
-  componentDidMount() {
-    if (this.state.nativeSupport) {
-      return;
-    }
-
-    let inputWidth = findDOMNode(this.refs.input).offsetWidth + 'px';
-
-    this.setState({ inputWidth });
-  }
-
-  _supportsNative() {
-    let feature = document.createElement('datalist');
-
-    return Boolean(feature && feature.options);
-  }
-
-  _isOptionShown(input, option) {
-    let optionRegex = new RegExp(input, 'gi');
-    let optionMatchesInput = input && option.match(optionRegex);
-
-    return this.state.showSuggestions && optionMatchesInput;
-  }
-
-  _renderFallbackOptions() {
-    let options = this.state.shownOptions.map((option, index) => {
-      let isSelected = index === this.state.selectedSuggestion;
-      let classNames = classSet({
-        lookahead__option: true,
-        'lookahead__option--selected': isSelected
-      });
-      let onClick = this.onFallbackOptionClick.bind(this, option);
-
-      return (
-        <li
-          className={classNames}
-          aria-selected={isSelected}
-          key={index}
-          onMouseDown={onClick}
-          role="option"
-        >
-          {option}
-        </li>
-      );
+  componentWillReceiveProps(nextProps) {
+    this.setState({
+      value: nextProps.value
     });
-
-    let classNames = classSet({
-      'lookahead__fallback-options': true,
-      'lookahead__fallback-options--shown': this.state.showSuggestions && this.state.value
-    });
-
-    return (
-      <ul
-        aria-multiselectable="false"
-        className={classNames}
-        role="listbox"
-        style={{ width: this.state.inputWidth }}
-      >
-        {options}
-      </ul>
-    );
-  }
-
-  _renderOptions() {
-    if (!this.state.nativeSupport) {
-      return this._renderFallbackOptions();
-    }
-
-    let options = this.state.options.map((option, index) => {
-      return <option key={index} value={option} />;
-    });
-
-    return (
-      <datalist id={this.props.name}>
-        {options}
-      </datalist>
-    );
-  }
-
-  _renderChildren() {
-    let child = Children.only(this.props.children);
-    let props = {
-      list: this.props.name,
-      onBlur: this.onBlur.bind(this),
-      onChange: this.onChange.bind(this),
-      ref: 'input',
-      value: this.state.value
-    };
-
-    if (!this.state.nativeSupport) {
-      props.onKeyDown = this.onKeyDown.bind(this);
-    }
-
-    return cloneElement(child, props);
-  }
-
-  onKeyDown(event) {
-    const { key } = event;
-    const { selectedSuggestion, shownOptions } = this.state;
-    let nextIndex = selectedSuggestion;
-
-    switch (key) {
-      case keys.down:
-        let maxIndex = shownOptions.length - 1;
-        nextIndex = selectedSuggestion === maxIndex ? maxIndex : selectedSuggestion + 1;
-        break;
-      case keys.up:
-        nextIndex = selectedSuggestion <= 0 ? 0 : selectedSuggestion - 1;
-        break;
-      case keys.enter:
-        this.onFallbackOptionClick(shownOptions[selectedSuggestion]);
-        break;
-      default:
-        return;
-    }
-
-    this.setState({ selectedSuggestion: nextIndex });
-  }
-
-  onFallbackOptionClick(option) {
-    this.setState({ showSuggestions: false, value: option });
-  }
-
-  onBlur() {
-    this.setState({ showSuggestions: false });
-  }
-
-  onChange(event) {
-    let { value } = event.target;
-    let newState = { selectedSuggestion: 0, value };
-
-    if (!this.state.nativeSupport) {
-      newState.showSuggestions = true;
-      newState.shownOptions = this.state.options.filter(option =>
-        this._isOptionShown(value, option)
-      );
-    }
-
-    this.setState(newState);
   }
 
   render() {
     return (
-      <section className="lookahead">
-        {this._renderChildren()}
-        {this._renderOptions()}
-      </section>
+      <input
+        type="search"
+        value={this.state.value}
+        onChange={this._onChange.bind(this)}
+        onKeyDown={this.props.onKeyDown}
+      />
     );
   }
-}
 
-AutoComplete.propTypes = {
-  name: PropTypes.string.isRequired
+  _onChange(e) {
+    this.setState({
+      value: e.currentTarget.value
+    });
+
+    this.props.onChange(e);
+  }
+}
+SearchInput.propTypes = {
+  onChange: React.PropTypes.func.isRequired,
+  onKeyDown: React.PropTypes.func.isRequired,
+  value: React.PropTypes.string
 };
-
-class App extends Component {
-  render() {
-    return (
-      <label>
-        Город:
-        <AutoComplete name="city" options={geoNames.City}>
-          <input placeholder="Начните вводить" />
-        </AutoComplete>
-      </label>
-    );
-  }
-}
 
 export default App;

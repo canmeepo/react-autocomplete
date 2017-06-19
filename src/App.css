@@ -3,7 +3,6 @@
 }
 
 .sugestion {
-  border: solid 1px #666;
   padding: 0;
 }
 ul {
@@ -12,9 +11,7 @@ ul {
 }
 li {
   cursor: pointer;
-  list-style: none;
   background: #333;
   color: white;
   margin: 0;
-  padding: .5em 1em;
 }
